@@ -1,0 +1,8 @@
+bodyparts:
+  - left_eye
+  - right_eye
+model:
+  type: "DeepLabCut"
+  pretrained: true
+project_name: "monkey_gaze_project"
+

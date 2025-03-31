@@ -1,0 +1,6 @@
+# Screen configuration: Define screen dimensions and grid layout.
+screen_width: 1920
+screen_height: 1080
+rows: 10
+cols: 11
+

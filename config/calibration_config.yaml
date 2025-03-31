@@ -1,0 +1,15 @@
+calibration_points:
+  - name: "top_left"
+    screen: {x: 100, y: 100}
+    eye: {x: 120, y: 130}
+  - name: "top_right"
+    screen: {x: 1820, y: 100}
+    eye: {x: 1840, y: 110}
+  - name: "bottom_left"
+    screen: {x: 100, y: 980}
+    eye: {x: 130, y: 960}
+  - name: "bottom_right"
+    screen: {x: 1820, y: 980}
+    eye: {x: 1850, y: 970}
+recalibration_interval: 60  # in seconds
+
