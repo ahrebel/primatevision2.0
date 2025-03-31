@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import argparse
 import os
 import numpy as np
@@ -7,552 +8,506 @@ import torch.nn as nn
 import torch.optim as optim
 import time
 from torch.utils.data import Dataset, DataLoader, random_split
-import matplotlib.pyplot as plt
 
-class GazeDataset(Dataset):
-    def __init__(self, csv_path):
+#########################
+# Grid Definitions
+#########################
+
+def get_coarse_grid():
+    """
+    Returns the coarse grid for a 1024x768 screen.
+    Squares:
+      A: Top-left, B: Top-right, C: Bottom-left, D: Bottom-right.
+    """
+    return {
+        "A": {"xmin": 0,         "xmax": 1024/2, "ymin": 0,         "ymax": 768/2},
+        "B": {"xmin": 1024/2,    "xmax": 1024,   "ymin": 0,         "ymax": 768/2},
+        "C": {"xmin": 0,         "xmax": 1024/2, "ymin": 768/2,    "ymax": 768},
+        "D": {"xmin": 1024/2,    "xmax": 1024,   "ymin": 768/2,    "ymax": 768},
+    }
+
+def get_fine_grid(coarse_label, coarse_grid):
+    """
+    Returns a fine grid for a given coarse square.
+    For example, if coarse_label is "A", the square is subdivided into AA, AB, AC, AD.
+    """
+    bounds = coarse_grid[coarse_label]
+    xmin, xmax, ymin, ymax = bounds["xmin"], bounds["xmax"], bounds["ymin"], bounds["ymax"]
+    xm = (xmin + xmax) / 2
+    ym = (ymin + ymax) / 2
+    return {
+        coarse_label + "A": {"xmin": xmin, "xmax": xm, "ymin": ymin, "ymax": ym},
+        coarse_label + "B": {"xmin": xm, "xmax": xmax, "ymin": ymin, "ymax": ym},
+        coarse_label + "C": {"xmin": xmin, "xmax": xm, "ymin": ym, "ymax": ymax},
+        coarse_label + "D": {"xmin": xm, "xmax": xmax, "ymin": ym, "ymax": ymax},
+    }
+
+#########################
+# Datasets
+#########################
+
+class CoarseGazeDataset(Dataset):
+    def __init__(self, csv_path, grid=None):
         df = pd.read_csv(csv_path)
         df.drop_duplicates(inplace=True)
-
-        needed = [
-            'corner_left_x','corner_left_y',
-            'corner_right_x','corner_right_y',
-            'nose_x','nose_y',
-            'left_pupil_x','left_pupil_y',
-            'right_pupil_x','right_pupil_y',
-            'screen_x','screen_y'
+        required = [
+            'corner_left_x', 'corner_left_y',
+            'corner_right_x', 'corner_right_y',
+            'nose_x', 'nose_y',
+            'left_pupil_x', 'left_pupil_y',
+            'right_pupil_x', 'right_pupil_y',
+            'screen_x', 'screen_y'
         ]
-        for c in needed:
-            if c not in df.columns:
-                raise ValueError(f"Column '{c}' missing from {csv_path}")
-
-        self.head_data = df[[
-            'corner_left_x','corner_left_y',
-            'corner_right_x','corner_right_y',
-            'nose_x','nose_y'
-        ]].values.astype(np.float32)
-
-        self.pupil_data = df[[
-            'left_pupil_x','left_pupil_y',
-            'right_pupil_x','right_pupil_y'
-        ]].values.astype(np.float32)
-
+        for col in required:
+            if col not in df.columns:
+                raise ValueError(f"Missing column '{col}' in CSV.")
+        
+        self.head_data = df[['corner_left_x','corner_left_y',
+                             'corner_right_x','corner_right_y',
+                             'nose_x','nose_y']].values.astype(np.float32)
+        self.pupil_data = df[['left_pupil_x','left_pupil_y',
+                              'right_pupil_x','right_pupil_y']].values.astype(np.float32)
         self.screen = df[['screen_x','screen_y']].values.astype(np.float32)
-
+        
+        # Normalize head and pupil data
         self.head_mean = self.head_data.mean(axis=0)
         self.head_std = self.head_data.std(axis=0)
         self.pupil_mean = self.pupil_data.mean(axis=0)
         self.pupil_std = self.pupil_data.std(axis=0)
-        self.screen_mean = self.screen.mean(axis=0)
-        self.screen_std = self.screen.std(axis=0)
-
+        
         self.head_normalized = (self.head_data - self.head_mean) / (self.head_std + 1e-7)
         self.pupil_normalized = (self.pupil_data - self.pupil_mean) / (self.pupil_std + 1e-7)
-        self.screen_normalized = (self.screen - self.screen_mean) / (self.screen_std + 1e-7)
-
-        print("\nData Ranges:")
-        print(f"Screen X: {self.screen[:,0].min():.1f} to {self.screen[:,0].max():.1f}")
-        print(f"Screen Y: {self.screen[:,1].min():.1f} to {self.screen[:,1].max():.1f}")
-
+        
+        self.grid = grid if grid is not None else get_coarse_grid()
+        self.grid_keys = sorted(self.grid.keys())  # e.g., ["A", "B", "C", "D"]
+    
     def __len__(self):
         return len(self.head_data)
-
+    
     def __getitem__(self, idx):
-        return (
-            self.head_normalized[idx],
-            self.pupil_normalized[idx],
-            self.screen_normalized[idx]
-        )
+        head = self.head_normalized[idx]
+        pupil = self.pupil_normalized[idx]
+        screen_pt = self.screen[idx]
+        label_idx = None
+        rel_coord = None
+        for i, key in enumerate(self.grid_keys):
+            bounds = self.grid[key]
+            if (screen_pt[0] >= bounds["xmin"] and screen_pt[0] < bounds["xmax"] and
+                screen_pt[1] >= bounds["ymin"] and screen_pt[1] < bounds["ymax"]):
+                label_idx = i
+                rel_x = (screen_pt[0] - bounds["xmin"]) / (bounds["xmax"] - bounds["xmin"])
+                rel_y = (screen_pt[1] - bounds["ymin"]) / (bounds["ymax"] - bounds["ymin"])
+                rel_coord = np.array([rel_x, rel_y], dtype=np.float32)
+                break
+        if label_idx is None:
+            raise ValueError(f"Screen point {screen_pt} does not fall into any grid region.")
+        return (torch.tensor(head),
+                torch.tensor(pupil),
+                torch.tensor(label_idx, dtype=torch.long),
+                torch.tensor(rel_coord))
 
-    def denormalize_screen(self, normalized_coords):
-        return normalized_coords * self.screen_std + self.screen_mean
+class FineGazeDataset(Dataset):
+    def __init__(self, csv_path, coarse_label, coarse_grid=None, fine_grid=None, 
+                 head_mean=None, head_std=None, pupil_mean=None, pupil_std=None):
+        df = pd.read_csv(csv_path)
+        df.drop_duplicates(inplace=True)
+        required = [
+            'corner_left_x', 'corner_left_y',
+            'corner_right_x', 'corner_right_y',
+            'nose_x', 'nose_y',
+            'left_pupil_x', 'left_pupil_y',
+            'right_pupil_x', 'right_pupil_y',
+            'screen_x', 'screen_y'
+        ]
+        for col in required:
+            if col not in df.columns:
+                raise ValueError(f"Missing column '{col}' in CSV.")
+        
+        self.head_data = df[['corner_left_x','corner_left_y',
+                             'corner_right_x','corner_right_y',
+                             'nose_x','nose_y']].values.astype(np.float32)
+        self.pupil_data = df[['left_pupil_x','left_pupil_y',
+                              'right_pupil_x','right_pupil_y']].values.astype(np.float32)
+        self.screen = df[['screen_x','screen_y']].values.astype(np.float32)
+        
+        # Filter only samples that fall in the specified coarse region
+        if coarse_grid is None:
+            coarse_grid = get_coarse_grid()
+        bounds = coarse_grid[coarse_label]
+        indices = []
+        for i, screen_pt in enumerate(self.screen):
+            if (screen_pt[0] >= bounds["xmin"] and screen_pt[0] < bounds["xmax"] and
+                screen_pt[1] >= bounds["ymin"] and screen_pt[1] < bounds["ymax"]):
+                indices.append(i)
+        if len(indices) == 0:
+            raise ValueError(f"No samples found in coarse region {coarse_label}.")
+        self.head_data = self.head_data[indices]
+        self.pupil_data = self.pupil_data[indices]
+        self.screen = self.screen[indices]
+        
+        # Use provided normalization parameters or compute from filtered data
+        self.head_mean = head_mean if head_mean is not None else self.head_data.mean(axis=0)
+        self.head_std = head_std if head_std is not None else self.head_data.std(axis=0)
+        self.pupil_mean = pupil_mean if pupil_mean is not None else self.pupil_data.mean(axis=0)
+        self.pupil_std = pupil_std if pupil_std is not None else self.pupil_data.std(axis=0)
+        
+        self.head_normalized = (self.head_data - self.head_mean) / (self.head_std + 1e-7)
+        self.pupil_normalized = (self.pupil_data - self.pupil_mean) / (self.pupil_std + 1e-7)
+        
+        if fine_grid is None:
+            self.fine_grid = get_fine_grid(coarse_label, coarse_grid)
+        else:
+            self.fine_grid = fine_grid
+        self.fine_keys = sorted(self.fine_grid.keys())
+    
+    def __len__(self):
+        return len(self.head_data)
+    
+    def __getitem__(self, idx):
+        head = self.head_normalized[idx]
+        pupil = self.pupil_normalized[idx]
+        screen_pt = self.screen[idx]
+        label_idx = None
+        rel_coord = None
+        for i, key in enumerate(self.fine_keys):
+            bounds = self.fine_grid[key]
+            if (screen_pt[0] >= bounds["xmin"] and screen_pt[0] < bounds["xmax"] and
+                screen_pt[1] >= bounds["ymin"] and screen_pt[1] < bounds["ymax"]):
+                label_idx = i
+                rel_x = (screen_pt[0] - bounds["xmin"]) / (bounds["xmax"] - bounds["xmin"])
+                rel_y = (screen_pt[1] - bounds["ymin"]) / (bounds["ymax"] - bounds["ymin"])
+                rel_coord = np.array([rel_x, rel_y], dtype=np.float32)
+                break
+        if label_idx is None:
+            raise ValueError("Screen point does not fall into any fine grid region")
+        return (torch.tensor(head),
+                torch.tensor(pupil),
+                torch.tensor(label_idx, dtype=torch.long),
+                torch.tensor(rel_coord))
 
-class HeadPoseNet(nn.Module):
+#########################
+# Model Definitions
+#########################
+
+class CoarseHeadPoseNet(nn.Module):
     def __init__(self, embed_dim=128):
         super().__init__()
         self.fc = nn.Sequential(
             nn.Linear(6, 256),
-            nn.LayerNorm(256),
-            nn.GELU(),
-            nn.Dropout(0.2),
-            
+            nn.ReLU(),
             nn.Linear(256, 128),
-            nn.LayerNorm(128),
-            nn.GELU(),
-            nn.Dropout(0.2),
-            
+            nn.ReLU(),
             nn.Linear(128, embed_dim)
         )
-
     def forward(self, x):
         return self.fc(x)
 
-class PupilNet(nn.Module):
-    def __init__(self, embed_dim=128):
+class CoarseGazeNet(nn.Module):
+    def __init__(self, embed_dim=128, num_coarse=4):
         super().__init__()
-        self.fc = nn.Sequential(
+        self.head_net = CoarseHeadPoseNet(embed_dim=embed_dim)
+        self.common_fc = nn.Sequential(
             nn.Linear(embed_dim + 4, 256),
-            nn.LayerNorm(256),
-            nn.GELU(),
-            nn.Dropout(0.2),
-            
+            nn.ReLU(),
             nn.Linear(256, 128),
-            nn.LayerNorm(128),
-            nn.GELU(),
-            nn.Dropout(0.2),
-            
-            nn.Linear(128, 2)
+            nn.ReLU()
         )
-
-    def forward(self, head_embed, pupil):
-        x = torch.cat([head_embed, pupil], dim=1)
-        return self.fc(x)
-
-class TwoStageNet(nn.Module):
-    def __init__(self, embed_dim=128):
-        super().__init__()
-        self.head_net = HeadPoseNet(embed_dim=embed_dim)
-        self.pupil_net = PupilNet(embed_dim=embed_dim)
-
+        self.classifier = nn.Linear(128, num_coarse)
+        self.regressor = nn.Linear(128, 2)
+    
     def forward(self, head_input, pupil_input):
-        h = self.head_net(head_input)
-        out = self.pupil_net(h, pupil_input)
-        return out
+        h_embed = self.head_net(head_input)
+        combined = torch.cat([h_embed, pupil_input], dim=1)
+        features = self.common_fc(combined)
+        logits = self.classifier(features)
+        rel_out = self.regressor(features)
+        return logits, rel_out
 
-def train_one_lr(
-    dataset, lr=1e-3, batch_size=32, max_epochs=50000,
-    patience=1000, device='cpu'
-):
-    test_size = int(len(dataset)*0.2)
-    train_size = len(dataset) - test_size
+class FineGazeNet(nn.Module):
+    def __init__(self, embed_dim=128, num_fine=4):
+        super().__init__()
+        self.head_net = nn.Sequential(
+            nn.Linear(6, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, embed_dim)
+        )
+        self.common_fc = nn.Sequential(
+            nn.Linear(embed_dim + 4, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128),
+            nn.ReLU()
+        )
+        self.classifier = nn.Linear(128, num_fine)
+        self.regressor = nn.Linear(128, 2)
+    
+    def forward(self, head_input, pupil_input):
+        h_embed = self.head_net(head_input)
+        combined = torch.cat([h_embed, pupil_input], dim=1)
+        features = self.common_fc(combined)
+        logits = self.classifier(features)
+        rel_out = self.regressor(features)
+        return logits, rel_out
+
+#########################
+# Training Routines
+#########################
+
+def train_coarse(csv_path, output_model_path, device='cpu', batch_size=32, epochs=50):
+    grid = get_coarse_grid()
+    dataset = CoarseGazeDataset(csv_path, grid=grid)
+    train_size = int(0.8 * len(dataset))
+    test_size = len(dataset) - train_size
     train_ds, test_ds = random_split(dataset, [train_size, test_size])
-
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
-    test_loader  = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
-
-    model = TwoStageNet(embed_dim=128).to(device)
-    criterion = nn.MSELoss()
+    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
     
-    optimizer = optim.AdamW(
-        model.parameters(),
-        lr=lr,
-        weight_decay=0.1,
-        betas=(0.9, 0.95)
-    )
+    model = CoarseGazeNet(embed_dim=128, num_coarse=len(dataset.grid_keys)).to(device)
+    optimizer = optim.Adam(model.parameters(), lr=1e-3)
+    ce_loss = nn.CrossEntropyLoss()
+    mse_loss = nn.MSELoss()
     
-    scheduler = optim.lr_scheduler.OneCycleLR(
-        optimizer,
-        max_lr=lr,
-        epochs=max_epochs,
-        steps_per_epoch=len(train_loader),
-        pct_start=0.2,
-        div_factor=10,
-        final_div_factor=100,
-        anneal_strategy='cos'
-    )
-
     best_loss = float('inf')
     best_state = None
-    patience_counter = 0
     
-    for epoch in range(1, max_epochs+1):
+    for epoch in range(1, epochs+1):
         model.train()
-        train_losses = []
-        for batch in train_loader:
-            head_data, pupil_data, targets = [b.to(device) for b in batch]
-            
+        total_loss = 0.0
+        for head, pupil, label, rel_coord in train_loader:
+            head, pupil, label, rel_coord = head.to(device), pupil.to(device), label.to(device), rel_coord.to(device)
             optimizer.zero_grad()
-            outputs = model(head_data, pupil_data)
-            loss = criterion(outputs, targets)
+            logits, pred_rel = model(head, pupil)
+            loss = ce_loss(logits, label) + mse_loss(pred_rel, rel_coord)
             loss.backward()
-            
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            
             optimizer.step()
-            scheduler.step()
-            train_losses.append(loss.item())
+            total_loss += loss.item() * head.size(0)
+        train_loss = total_loss / len(train_ds)
         
         model.eval()
-        test_losses = []
+        total_loss = 0.0
+        correct = 0
+        total = 0
         with torch.no_grad():
-            for batch in test_loader:
-                head_data, pupil_data, targets = [b.to(device) for b in batch]
-                outputs = model(head_data, pupil_data)
-                loss = criterion(outputs, targets)
-                test_losses.append(loss.item())
-        
-        train_loss = np.mean(train_losses)
-        test_loss = np.mean(test_losses)
-        
-        print(f"Epoch {epoch:4d} | LR={optimizer.param_groups[0]['lr']:.6f} | "
-              f"TrainLoss={train_loss:.4f} | TestLoss={test_loss:.4f}")
+            for head, pupil, label, rel_coord in test_loader:
+                head, pupil, label, rel_coord = head.to(device), pupil.to(device), label.to(device), rel_coord.to(device)
+                logits, pred_rel = model(head, pupil)
+                loss = ce_loss(logits, label) + mse_loss(pred_rel, rel_coord)
+                total_loss += loss.item() * head.size(0)
+                preds = torch.argmax(logits, dim=1)
+                correct += (preds == label).sum().item()
+                total += head.size(0)
+        test_loss = total_loss / len(test_ds)
+        test_acc = correct / total
+        print(f"[Coarse] Epoch {epoch}: Train Loss: {train_loss:.4f} | Test Loss: {test_loss:.4f} | Test Acc: {test_acc*100:.2f}%")
         
         if test_loss < best_loss:
             best_loss = test_loss
             best_state = model.state_dict()
-            patience_counter = 0
-        else:
-            patience_counter += 1
-            
-        if patience_counter >= patience:
-            print(f"Early stopping at epoch {epoch}")
-            break
-            
-    return best_loss, best_state
-
-def final_train_on_full(
-    dataset, model_state, lr, batch_size=32, epochs=5, device='mps'
-):
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-    model = TwoStageNet(embed_dim=128).to(device)
-    model.load_state_dict(model_state)
-
-    criterion = nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-
-    for ep in range(1, epochs+1):
-        model.train()
-        total_loss = 0.0
-        total_count = 0
-        for head, pupil, scr in loader:
-            head, pupil, scr = head.to(device), pupil.to(device), scr.to(device)
-            optimizer.zero_grad()
-            pred = model(head, pupil)
-            loss = criterion(pred, scr)
-            loss.backward()
-            optimizer.step()
-
-            total_loss += loss.item() * head.size(0)
-            total_count += head.size(0)
-        print(f"Refine epoch {ep}/{epochs} | Loss={(total_loss/total_count):.4f}")
-
-    return model.state_dict()
-
-def analyze_data_distribution(dataset, grid_size=13):
-    print("\nDetailed Data Analysis:")
-
-    all_data = [dataset[i] for i in range(len(dataset))]
-    head = np.stack([d[0] for d in all_data])
-    pupil = np.stack([d[1] for d in all_data])
-    screen = np.stack([d[2] for d in all_data])
     
-    # Use denormalized screen coordinates for analysis
-    denorm_screen = dataset.denormalize_screen(screen)
-    
-    # Create grid with specified size (default 13x13)
-    # Use exact screen dimensions rather than min/max of data
-    x_min, x_max = 0, 1008  # Standard screen width
-    y_min, y_max = 0, 749   # Standard screen height
-    
-    x_bins = np.linspace(x_min, x_max, grid_size + 1)
-    y_bins = np.linspace(y_min, y_max, grid_size + 1)
-    
-    hist, _, _ = np.histogram2d(denorm_screen[:,0], denorm_screen[:,1], bins=(x_bins, y_bins))
-    
-    print("\nScreen Coverage (samples per region):")
-    print(f"  Grid size: {grid_size}x{grid_size}")
-    print("  Min samples in any region:", int(hist.min()))
-    print("  Max samples in any region:", int(hist.max()))
-    print("  Mean samples per region:", int(hist.mean()))
-    print("  Empty regions:", np.sum(hist == 0))
-    
-    # Avoid division by zero
-    if hist.min() > 0:
-        print(f"  Ratio max/min: {hist.max()/hist.min():.1f}x")
-    else:
-        print("  Ratio max/min: ∞ (some regions have zero samples)")
-    
-    print("\nHead Pose Ranges:")
-    print(f"  Left corner X: {head[:,0].min():.1f} to {head[:,0].max():.1f}")
-    print(f"  Left corner Y: {head[:,1].min():.1f} to {head[:,1].max():.1f}")
-    print(f"  Right corner X: {head[:,2].min():.1f} to {head[:,2].max():.1f}")
-    print(f"  Right corner Y: {head[:,3].min():.1f} to {head[:,3].max():.1f}")
-    print(f"  Nose X: {head[:,4].min():.1f} to {head[:,4].max():.1f}")
-    print(f"  Nose Y: {head[:,5].min():.1f} to {head[:,5].max():.1f}")
-    
-    print("\nPupil Position Ranges:")
-    print(f"  Left pupil X: {pupil[:,0].min():.1f} to {pupil[:,0].max():.1f}")
-    print(f"  Left pupil Y: {pupil[:,1].min():.1f} to {pupil[:,1].max():.1f}")
-    print(f"  Right pupil X: {pupil[:,2].min():.1f} to {pupil[:,2].max():.1f}")
-    print(f"  Right pupil Y: {pupil[:,3].min():.1f} to {pupil[:,3].max():.1f}")
-    
-    print("\nScreen Coverage Heatmap (0=low, 9=high samples):")
-    if hist.max() > 0:  # Avoid division by zero
-        hist_normalized = hist / hist.max()
-    else:
-        hist_normalized = hist
-        
-    for i in range(grid_size):
-        row = ""
-        for j in range(grid_size):
-            intensity = int(hist_normalized[j, grid_size-1-i] * 9)
-            row += str(intensity) + " "
-        print(row)
-
-def evaluate_model_with_error_bars(model, dataset, device='cpu', n_bootstrap=100, confidence=0.95):
-    """
-    Evaluate model performance with error bars using bootstrap resampling.
-    
-    Parameters:
-    -----------
-    model : nn.Module
-        The trained model to evaluate
-    dataset : Dataset
-        The dataset to evaluate on
-    device : str
-        Device to use for computation
-    n_bootstrap : int
-        Number of bootstrap samples to generate
-    confidence : float
-        Confidence level for the error bars (0-1)
-    
-    Returns:
-    --------
-    dict
-        Dictionary containing error metrics with confidence intervals
-    """
-    import numpy as np
-    from torch.utils.data import DataLoader, Subset
-    import torch
-    
-    model.eval()
-    
-    # Create a dataloader for the full dataset
-    loader = DataLoader(dataset, batch_size=64, shuffle=False)
-    
-    # Collect all predictions and targets
-    all_preds = []
-    all_targets = []
-    
-    with torch.no_grad():
-        for head, pupil, target in loader:
-            head = head.to(device)
-            pupil = pupil.to(device)
-            target = target.to(device)
-            
-            pred = model(head, pupil)
-            
-            all_preds.append(pred.cpu().numpy())
-            all_targets.append(target.cpu().numpy())
-    
-    all_preds = np.vstack(all_preds)
-    all_targets = np.vstack(all_targets)
-    
-    # Denormalize predictions and targets
-    denorm_preds = dataset.denormalize_screen(all_preds)
-    denorm_targets = dataset.denormalize_screen(all_targets)
-    
-    # Calculate pixel errors
-    pixel_errors = np.sqrt(np.sum((denorm_preds - denorm_targets)**2, axis=1))
-    
-    # Calculate basic statistics
-    mean_error = np.mean(pixel_errors)
-    median_error = np.median(pixel_errors)
-    percentile_95 = np.percentile(pixel_errors, 95)
-    
-    # Bootstrap to get confidence intervals
-    bootstrap_means = []
-    bootstrap_medians = []
-    bootstrap_95percentiles = []
-    
-    n_samples = len(pixel_errors)
-    
-    for _ in range(n_bootstrap):
-        # Sample with replacement
-        indices = np.random.choice(n_samples, n_samples, replace=True)
-        bootstrap_sample = pixel_errors[indices]
-        
-        bootstrap_means.append(np.mean(bootstrap_sample))
-        bootstrap_medians.append(np.median(bootstrap_sample))
-        bootstrap_95percentiles.append(np.percentile(bootstrap_sample, 95))
-    
-    # Calculate confidence intervals
-    alpha = (1 - confidence) / 2
-    ci_low_idx = int(n_bootstrap * alpha)
-    ci_high_idx = int(n_bootstrap * (1 - alpha))
-    
-    bootstrap_means.sort()
-    bootstrap_medians.sort()
-    bootstrap_95percentiles.sort()
-    
-    mean_ci = (bootstrap_means[ci_low_idx], bootstrap_means[ci_high_idx])
-    median_ci = (bootstrap_medians[ci_low_idx], bootstrap_medians[ci_high_idx])
-    percentile_95_ci = (bootstrap_95percentiles[ci_low_idx], bootstrap_95percentiles[ci_high_idx])
-    
-    # Calculate per-axis errors
-    x_errors = np.abs(denorm_preds[:, 0] - denorm_targets[:, 0])
-    y_errors = np.abs(denorm_preds[:, 1] - denorm_targets[:, 1])
-    
-    mean_x_error = np.mean(x_errors)
-    mean_y_error = np.mean(y_errors)
-    
-    # Bootstrap for per-axis errors
-    bootstrap_x_means = []
-    bootstrap_y_means = []
-    
-    for _ in range(n_bootstrap):
-        indices = np.random.choice(n_samples, n_samples, replace=True)
-        bootstrap_x = x_errors[indices]
-        bootstrap_y = y_errors[indices]
-        
-        bootstrap_x_means.append(np.mean(bootstrap_x))
-        bootstrap_y_means.append(np.mean(bootstrap_y))
-    
-    bootstrap_x_means.sort()
-    bootstrap_y_means.sort()
-    
-    x_error_ci = (bootstrap_x_means[ci_low_idx], bootstrap_x_means[ci_high_idx])
-    y_error_ci = (bootstrap_y_means[ci_low_idx], bootstrap_y_means[ci_high_idx])
-    
-    # Return all metrics
-    return {
-        'mean_error': mean_error,
-        'mean_error_ci': mean_ci,
-        'median_error': median_error,
-        'median_error_ci': median_ci,
-        'percentile_95': percentile_95,
-        'percentile_95_ci': percentile_95_ci,
-        'mean_x_error': mean_x_error,
-        'mean_x_error_ci': x_error_ci,
-        'mean_y_error': mean_y_error,
-        'mean_y_error_ci': y_error_ci,
-        'raw_errors': pixel_errors
-    }
-
-def train_two_stage_net(
-    csv_path,
-    output_path,
-    lr_candidates=[1e-3],
-    max_epochs=50000,
-    patience=1000,
-    batch_size=32,
-    device='cpu',
-    grid_size=13
-):
-    dataset = GazeDataset(csv_path)
-    analyze_data_distribution(dataset, grid_size=grid_size)
-    print(f"Using device: {device}")
-
-    print("\nTraining data statistics:")
-    print(f"X range: {dataset.screen[:,0].min():.2f} to {dataset.screen[:,0].max():.2f}")
-    print(f"Y range: {dataset.screen[:,1].min():.2f} to {dataset.screen[:,1].max():.2f}")
-    print(f"X mean: {dataset.screen[:,0].mean():.2f}, std: {dataset.screen[:,0].std():.2f}")
-    print(f"Y mean: {dataset.screen[:,1].mean():.2f}, std: {dataset.screen[:,1].std():.2f}")
-    print(f"Number of samples: {len(dataset)}")
-
-    best_overall_loss = float('inf')
-    best_lr = None
-    best_state = None
-
-    overall_start = time.time()
-    for lr in lr_candidates:
-        print(f"\n=== Training with LR={lr} ===")
-        candidate_start = time.time()
-        test_loss, model_state = train_one_lr(
-            dataset,
-            lr=lr,
-            batch_size=batch_size,
-            max_epochs=max_epochs,
-            patience=patience,
-            device=device
-        )
-        candidate_elapsed = time.time() - candidate_start
-        print(f"LR={lr} training time: {candidate_elapsed:.2f} seconds, Test Loss: {test_loss:.4f}")
-        
-        if test_loss < best_overall_loss:
-            best_overall_loss = test_loss
-            best_lr = lr
-            best_state = model_state
-    
-    overall_elapsed = time.time() - overall_start
-    print(f"\nTotal training time: {overall_elapsed:.2f} seconds")
-    print(f"Best LR: {best_lr}, Best Test Loss: {best_overall_loss:.4f}")
-    
-    # Final training on full dataset with best LR
-    print("\nFinal training on full dataset...")
-    final_state = final_train_on_full(dataset, best_state, best_lr, device=device)
-    
-    # Evaluate model with error bars
-    print("\nEvaluating model performance with error bars...")
-    model = TwoStageNet(embed_dim=128).to(device)
-    model.load_state_dict(final_state)
-    
-    error_metrics = evaluate_model_with_error_bars(model, dataset, device=device)
-    
-    print("\nModel Performance Metrics (in pixels):")
-    print(f"Mean Error: {error_metrics['mean_error']:.2f} pixels")
-    print(f"95% CI: ({error_metrics['mean_error_ci'][0]:.2f}, {error_metrics['mean_error_ci'][1]:.2f})")
-    print(f"Median Error: {error_metrics['median_error']:.2f} pixels")
-    print(f"95% CI: ({error_metrics['median_error_ci'][0]:.2f}, {error_metrics['median_error_ci'][1]:.2f})")
-    print(f"95th Percentile Error: {error_metrics['percentile_95']:.2f} pixels")
-    print(f"95% CI: ({error_metrics['percentile_95_ci'][0]:.2f}, {error_metrics['percentile_95_ci'][1]:.2f})")
-    print(f"Mean X Error: {error_metrics['mean_x_error']:.2f} pixels")
-    print(f"95% CI: ({error_metrics['mean_x_error_ci'][0]:.2f}, {error_metrics['mean_x_error_ci'][1]:.2f})")
-    print(f"Mean Y Error: {error_metrics['mean_y_error']:.2f} pixels")
-    print(f"95% CI: ({error_metrics['mean_y_error_ci'][0]:.2f}, {error_metrics['mean_y_error_ci'][1]:.2f})")
-    
-    # Create error distribution plot
-    plt.figure(figsize=(10, 6))
-    plt.hist(error_metrics['raw_errors'], bins=50, alpha=0.7, color='blue')
-    plt.axvline(error_metrics['mean_error'], color='red', linestyle='--', label=f'Mean: {error_metrics["mean_error"]:.2f}px')
-    plt.axvline(error_metrics['median_error'], color='green', linestyle='--', label=f'Median: {error_metrics["median_error"]:.2f}px')
-    plt.axvline(error_metrics['percentile_95'], color='orange', linestyle='--', label=f'95th Percentile: {error_metrics["percentile_95"]:.2f}px')
-    plt.xlabel('Error (pixels)')
-    plt.ylabel('Frequency')
-    plt.title('Gaze Prediction Error Distribution')
-    plt.legend()
-    plt.grid(alpha=0.3)
-    plt.tight_layout()
-    plt.savefig('error_distribution.png', dpi=150)
-    print("Error distribution plot saved to error_distribution.png")
-    
-    # Save model with normalization parameters
     save_dict = {
-        'state_dict': final_state,
+        'state_dict': best_state,
+        'grid': grid,
+        'grid_keys': dataset.grid_keys,
         'head_mean': dataset.head_mean,
         'head_std': dataset.head_std,
         'pupil_mean': dataset.pupil_mean,
         'pupil_std': dataset.pupil_std,
-        'screen_mean': dataset.screen_mean,
-        'screen_std': dataset.screen_std,
-        'error_metrics': error_metrics
     }
+    torch.save(save_dict, output_model_path)
+    print(f"Coarse model saved to {output_model_path}")
+
+def train_fine(csv_path, coarse_label, output_model_path, device='cpu', batch_size=32, epochs=50):
+    coarse_grid = get_coarse_grid()
+    dataset = FineGazeDataset(csv_path, coarse_label, coarse_grid=coarse_grid)
+    train_size = int(0.8 * len(dataset))
+    test_size = len(dataset) - train_size
+    train_ds, test_ds = random_split(dataset, [train_size, test_size])
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
     
-    torch.save(save_dict, output_path)
-    print(f"Model saved to {output_path}")
+    model = FineGazeNet(embed_dim=128, num_fine=len(dataset.fine_keys)).to(device)
+    optimizer = optim.Adam(model.parameters(), lr=1e-3)
+    ce_loss = nn.CrossEntropyLoss()
+    mse_loss = nn.MSELoss()
     
-    return final_state, error_metrics
+    best_loss = float('inf')
+    best_state = None
+    
+    for epoch in range(1, epochs+1):
+        model.train()
+        total_loss = 0.0
+        for head, pupil, label, rel_coord in train_loader:
+            head, pupil, label, rel_coord = head.to(device), pupil.to(device), label.to(device), rel_coord.to(device)
+            optimizer.zero_grad()
+            logits, pred_rel = model(head, pupil)
+            loss = ce_loss(logits, label) + mse_loss(pred_rel, rel_coord)
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item() * head.size(0)
+        train_loss = total_loss / len(train_ds)
+        
+        model.eval()
+        total_loss = 0.0
+        correct = 0
+        total = 0
+        with torch.no_grad():
+            for head, pupil, label, rel_coord in test_loader:
+                head, pupil, label, rel_coord = head.to(device), pupil.to(device), label.to(device), rel_coord.to(device)
+                logits, pred_rel = model(head, pupil)
+                loss = ce_loss(logits, label) + mse_loss(pred_rel, rel_coord)
+                total_loss += loss.item() * head.size(0)
+                preds = torch.argmax(logits, dim=1)
+                correct += (preds == label).sum().item()
+                total += head.size(0)
+        test_loss = total_loss / len(test_ds)
+        test_acc = correct / total
+        print(f"[Fine {coarse_label}] Epoch {epoch}: Train Loss: {train_loss:.4f} | Test Loss: {test_loss:.4f} | Test Acc: {test_acc*100:.2f}%")
+        
+        if test_loss < best_loss:
+            best_loss = test_loss
+            best_state = model.state_dict()
+    
+    save_dict = {
+        'state_dict': best_state,
+        'fine_grid': dataset.fine_grid,
+        'fine_keys': dataset.fine_keys,
+        'head_mean': dataset.head_mean,
+        'head_std': dataset.head_std,
+        'pupil_mean': dataset.pupil_mean,
+        'pupil_std': dataset.pupil_std,
+    }
+    torch.save(save_dict, output_model_path)
+    print(f"Fine model for coarse region {coarse_label} saved to {output_model_path}")
+
+#########################
+# Inference Routines
+#########################
+
+def load_coarse_model(model_path, device):
+    data = torch.load(model_path, map_location=device)
+    grid = data['grid']
+    grid_keys = data['grid_keys']
+    head_mean = data['head_mean']
+    head_std = data['head_std']
+    pupil_mean = data['pupil_mean']
+    pupil_std = data['pupil_std']
+    num_coarse = len(grid_keys)
+    model = CoarseGazeNet(embed_dim=128, num_coarse=num_coarse).to(device)
+    model.load_state_dict(data['state_dict'])
+    model.eval()
+    return model, grid, grid_keys, head_mean, head_std, pupil_mean, pupil_std
+
+def load_fine_model(model_path, device):
+    data = torch.load(model_path, map_location=device)
+    fine_grid = data['fine_grid']
+    fine_keys = data['fine_keys']
+    head_mean = data['head_mean']
+    head_std = data['head_std']
+    pupil_mean = data['pupil_mean']
+    pupil_std = data['pupil_std']
+    num_fine = len(fine_keys)
+    model = FineGazeNet(embed_dim=128, num_fine=num_fine).to(device)
+    model.load_state_dict(data['state_dict'])
+    model.eval()
+    return model, fine_grid, fine_keys, head_mean, head_std, pupil_mean, pupil_std
+
+def preprocess_sample(sample, head_mean, head_std, pupil_mean, pupil_std):
+    head = np.array([sample['corner_left_x'], sample['corner_left_y'],
+                     sample['corner_right_x'], sample['corner_right_y'],
+                     sample['nose_x'], sample['nose_y']], dtype=np.float32)
+    pupil = np.array([sample['left_pupil_x'], sample['left_pupil_y'],
+                      sample['right_pupil_x'], sample['right_pupil_y']], dtype=np.float32)
+    head_norm = (head - head_mean) / (head_std + 1e-7)
+    pupil_norm = (pupil - pupil_mean) / (pupil_std + 1e-7)
+    return torch.tensor(head_norm).unsqueeze(0), torch.tensor(pupil_norm).unsqueeze(0)
+
+def infer(sample, coarse_model, coarse_grid, coarse_keys, head_mean, head_std, pupil_mean, pupil_std, fine_model_dir, device):
+    head, pupil = preprocess_sample(sample, head_mean, head_std, pupil_mean, pupil_std)
+    with torch.no_grad():
+        logits, coarse_rel = coarse_model(head.to(device), pupil.to(device))
+        coarse_pred_idx = torch.argmax(logits, dim=1).item()
+        coarse_label = coarse_keys[coarse_pred_idx]
+        bounds = coarse_grid[coarse_label]
+        coarse_abs_x = bounds["xmin"] + coarse_rel[0,0].item() * (bounds["xmax"] - bounds["xmin"])
+        coarse_abs_y = bounds["ymin"] + coarse_rel[0,1].item() * (bounds["ymax"] - bounds["ymin"])
+        
+        # Try to load a fine model for the predicted coarse region.
+        fine_model_path = os.path.join(fine_model_dir, f"fine_model_{coarse_label}.pt")
+        if os.path.exists(fine_model_path):
+            fine_model, fine_grid, fine_keys, f_head_mean, f_head_std, f_pupil_mean, f_pupil_std = load_fine_model(fine_model_path, device)
+            head_f, pupil_f = preprocess_sample(sample, f_head_mean, f_head_std, f_pupil_mean, f_pupil_std)
+            fine_logits, fine_rel = fine_model(head_f.to(device), pupil_f.to(device))
+            fine_pred_idx = torch.argmax(fine_logits, dim=1).item()
+            fine_label = fine_keys[fine_pred_idx]
+            fine_bounds = fine_grid[fine_label]
+            fine_abs_x = fine_bounds["xmin"] + fine_rel[0,0].item() * (fine_bounds["xmax"] - fine_bounds["xmin"])
+            fine_abs_y = fine_bounds["ymin"] + fine_rel[0,1].item() * (fine_bounds["ymax"] - fine_bounds["ymin"])
+            final_x = fine_abs_x
+            final_y = fine_abs_y
+            method = "fine"
+        else:
+            final_x = coarse_abs_x
+            final_y = coarse_abs_y
+            method = "coarse"
+    
+    return {
+        "coarse_label": coarse_label,
+        "coarse_abs": (coarse_abs_x, coarse_abs_y),
+        "final_abs": (final_x, final_y),
+        "method": method
+    }
+
+#########################
+# Main Routine with Subcommands
+#########################
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Two-stage net with automatic LR search, early stopping, and timing."
-    )
-    parser.add_argument("--data", required=True, help="Calibration CSV path.")
-    parser.add_argument("--output", required=True, help="Where to save the final .pt model.")
-    parser.add_argument("--lr_candidates", nargs="+", type=float, default=[1e-3],
-                        help="List of candidate LRs to try (space-separated).")
-    parser.add_argument("--max_epochs", type=int, default=50000,
-                        help="Upper bound on epochs if improvement continues.")
-    parser.add_argument("--patience", type=int, default=1000,
-                        help="Early stopping patience in epochs.")
-    parser.add_argument("--batch_size", type=int, default=32,
-                        help="Batch size.")
-    parser.add_argument("--device", type=str, default='cpu',
-                        help="Device to use for training.")
-    parser.add_argument("--grid_size", type=int, default=13,
-                        help="Grid size for data analysis.")
+    parser = argparse.ArgumentParser(description="Hierarchical Gaze Estimation")
+    subparsers = parser.add_subparsers(dest="mode", help="Mode of operation")
+
+    # Coarse training subcommand
+    parser_coarse = subparsers.add_parser("coarse_train", help="Train the coarse model")
+    parser_coarse.add_argument("--data", required=True, help="Path to CSV file")
+    parser_coarse.add_argument("--output", required=True, help="Path to save coarse model (.pt)")
+    parser_coarse.add_argument("--batch_size", type=int, default=32, help="Batch size")
+    parser_coarse.add_argument("--epochs", type=int, default=50, help="Number of epochs")
+    parser_coarse.add_argument("--device", type=str, default="cpu", help="Device (cpu or cuda)")
+
+    # Fine training subcommand
+    parser_fine = subparsers.add_parser("fine_train", help="Train a fine model for a specific coarse square")
+    parser_fine.add_argument("--data", required=True, help="Path to CSV file")
+    parser_fine.add_argument("--coarse_label", required=True, help="Coarse square label (A, B, C, or D)")
+    parser_fine.add_argument("--output", required=True, help="Path to save fine model (.pt)")
+    parser_fine.add_argument("--batch_size", type=int, default=32, help="Batch size")
+    parser_fine.add_argument("--epochs", type=int, default=50, help="Number of epochs")
+    parser_fine.add_argument("--device", type=str, default="cpu", help="Device (cpu or cuda)")
+
+    # Inference subcommand
+    parser_inf = subparsers.add_parser("inference", help="Run inference on a CSV of samples")
+    parser_inf.add_argument("--data_csv", required=True, help="CSV file with gaze samples")
+    parser_inf.add_argument("--coarse_model", required=True, help="Path to coarse model (.pt)")
+    parser_inf.add_argument("--fine_model_dir", required=True, help="Directory with fine models named as fine_model_<coarse_label>.pt")
+    parser_inf.add_argument("--device", type=str, default="cpu", help="Device (cpu or cuda)")
+
     args = parser.parse_args()
 
-    train_two_stage_net(
-        csv_path=args.data,
-        output_path=args.output,
-        lr_candidates=args.lr_candidates,
-        max_epochs=args.max_epochs,
-        patience=args.patience,
-        batch_size=args.batch_size,
-        device=args.device,
-        grid_size=args.grid_size
-    )
+    if args.mode == "coarse_train":
+        train_coarse(args.data, args.output, device=args.device, batch_size=args.batch_size, epochs=args.epochs)
+    elif args.mode == "fine_train":
+        train_fine(args.data, args.coarse_label, args.output, device=args.device, batch_size=args.batch_size, epochs=args.epochs)
+    elif args.mode == "inference":
+        device = args.device
+        coarse_model, coarse_grid, coarse_keys, head_mean, head_std, pupil_mean, pupil_std = load_coarse_model(args.coarse_model, device)
+        df = pd.read_csv(args.data_csv)
+        for i, row in df.iterrows():
+            sample = row.to_dict()
+            res = infer(sample, coarse_model, coarse_grid, coarse_keys, head_mean, head_std, pupil_mean, pupil_std, args.fine_model_dir, device)
+            print(f"Sample {i}: Coarse region {res['coarse_label']} predicted at {res['coarse_abs']}, final prediction {res['final_abs']} using {res['method']} method")
+            if i >= 9:
+                break
+    else:
+        parser.print_help()
 
 if __name__ == "__main__":
     main()

@@ -43,16 +43,61 @@ PrimateVision simplifies the **eye-tracking** workflow by:
 
 ## Prerequisites & Installation
 
-### Requirements
-- Python 3.8+
-- PyTorch, OpenCV, pandas, numpy, matplotlib
-- DeepLabCut
+### Prerequisites
 
-### Setup
+- **Python 3.8** (or later)
+- **Conda or pip** for environment management
+- **DeepLabCut** dependencies (TensorFlow, etc.) if training or re-configuring DLC
+- **PyTorch** for the neural network model
+- **OpenCV** for video and image I/O
+- **PyQt5** (if you want to use the optional GUI)
 
-```bash
-pip install -r requirements.txt
-pip install deeplabcut[gui]
+### Installation
+
+1. **Clone the Repository**  
+   ```bash
+   git clone https://github.com/ahrebel/primatevision2.0.git
+   cd primatevision
+   ```
+
+2. **Set Up Your Environment**  
+   **Conda (recommended)**:
+   ```bash
+   conda create -n primatevision -c conda-forge python=3.8 \
+       pytables hdf5 lzo opencv numpy pandas matplotlib \
+       scipy tqdm statsmodels pytorch torchvision
+   conda activate primatevision
+   ```
+   **pip + virtualenv** (alternative):
+   ```bash
+   python -m venv venv
+   source venv/bin/activate   # Windows: venv\Scripts\activate
+   ```
+
+3. **Install Required Packages**  
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **Install DeepLabCut**  
+   ```bash
+   pip install deeplabcut pyyaml tensorflow tensorpack tf-slim 'deeplabcut[gui]'
+   ```
+   > *If you see `ModuleNotFoundError: No module named 'keras.legacy_tf_layers'`, try:*
+   > ```bash
+   > pip install --upgrade tensorflow_macos==2.12.0
+   > ```
+
+5. **Install PyTorch** (if not included in requirements.txt)
+   ```bash
+   pip install torch torchvision
+   ```
+
+6. **(Optional) Install PyQt5**  
+   ```bash
+   pip install pyqt5
+   ```
+   This is required only if you want to use the PrimateVision GUI.
 ```
 
 ---
