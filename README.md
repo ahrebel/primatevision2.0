@@ -57,7 +57,7 @@ PrimateVision simplifies the **eye-tracking** workflow by:
 1. **Clone the Repository**  
    ```bash
    git clone https://github.com/ahrebel/primatevision2.0.git
-   cd primatevision
+   cd primatevision2.0
    ```
 
 2. **Set Up Your Environment**  
