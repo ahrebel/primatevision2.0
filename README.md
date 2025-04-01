@@ -98,7 +98,6 @@ PrimateVision simplifies the **eye-tracking** workflow by:
    pip install pyqt5
    ```
    This is required only if you want to use the PrimateVision GUI.
-```
 
 ---
 
