@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import deeplabcut
 import time
+from datetime import datetime, timedelta
 
 def smooth_landmarks_inplace(df, window_size=3):
     columns = [
@@ -19,9 +20,7 @@ def smooth_landmarks_inplace(df, window_size=3):
     ]
     for col in columns:
         if col in df.columns:
-            df[col] = df[col].rolling(
-                window=window_size, center=True, min_periods=1
-            ).median()
+            df[col] = df[col].rolling(window=window_size, center=True, min_periods=1).median()
     return df
 
 def compute_distances_and_roll(
@@ -47,6 +46,25 @@ def compute_distances_and_roll(
 
     return dist_nose_left_pupil, dist_nose_right_pupil, roll_angle_approx
 
+def extract_video_start_from_filename(video_filename):
+    """
+    Extracts the start datetime from a video filename.
+    Expected format: <number>_YYYYMMDD_HHMMSS_mmm.mp4
+    For example, from "50_20250401_231308_685.mp4" it extracts:
+      datetime(2025, 4, 1, 23, 13, 08, 685000)
+    """
+    base = os.path.basename(video_filename)
+    parts = base.split('_')
+    if len(parts) < 4:
+        raise ValueError("Video filename does not contain a valid start datetime.")
+    date_str = parts[1]             # e.g., "20250401"
+    time_str = parts[2]             # e.g., "231308"
+    ms_part = parts[3].split('.')[0] # e.g., "685"
+    # Pad milliseconds to 6 digits (for microseconds)
+    ms_str = ms_part.zfill(6)
+    timestamp_str = f"{date_str}_{time_str}_{ms_str}"
+    return datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S_%f")
+
 def process_video(
     video_path,
     config_path,
@@ -54,7 +72,8 @@ def process_video(
     skip_frames=False,
     resize_factor=1.0,
     smooth_window=0,
-    labeled_frame_output=None
+    labeled_frame_output=None,
+    video_start_datetime=None
 ):
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -73,9 +92,8 @@ def process_video(
     sample_frame_idx = None
     frame_map = []
 
-    import tempfile
-    import time
-    start_time = time.time()
+    # Timing for frame reading (for performance measurement)
+    read_start_time = time.time()
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_video_path = os.path.join(temp_dir, "combined_temp.mp4")
@@ -103,20 +121,17 @@ def process_video(
                 sample_frame = frame.copy()
                 sample_frame_idx = processed_count
 
-            frame_map.append(
-                (processed_count, global_frame_idx, global_frame_idx / fps)
-            )
+            frame_map.append((processed_count, global_frame_idx, global_frame_idx / fps))
             processed_count += 1
             global_frame_idx += 1
 
         out_writer.release()
         cap.release()
-        read_elapsed = time.time() - start_time
+        read_elapsed = time.time() - read_start_time
         print(f"Finished writing {processed_count} frames to {temp_video_path} in {read_elapsed:.2f}s")
 
         print("Running DLC analyze_videos on combined_temp.mp4...")
         dlc_start = time.time()
-        import deeplabcut
         deeplabcut.analyze_videos(
             config_path, [temp_video_path],
             save_as_csv=True,
@@ -132,9 +147,19 @@ def process_video(
         dlc_result_csv = os.path.join(temp_dir, csv_files[0])
         dlc_df = pd.read_csv(dlc_result_csv, header=[1, 2])
 
+        # If video_start_datetime was not provided, extract it from the video filename.
+        if video_start_datetime is None:
+            video_start = extract_video_start_from_filename(video_path)
+            print(f"Extracted video start datetime from filename: {video_start}")
+        else:
+            video_start = datetime.strptime(video_start_datetime, '%Y-%m-%d %H:%M:%S')
+        frame_rate = fps
+
         final_data = []
         for i in range(len(dlc_df)):
             proc_idx, orig_idx, orig_time = frame_map[i]
+            elapsed = orig_idx / frame_rate  # elapsed seconds from video start
+            timestamp = video_start + timedelta(seconds=elapsed)
 
             left_pupil_x  = dlc_df[("left_pupil",  "x")].iloc[i]
             left_pupil_y  = dlc_df[("left_pupil",  "y")].iloc[i]
@@ -157,7 +182,8 @@ def process_video(
 
             final_data.append({
                 "frame": orig_idx,
-                "time": orig_time,
+                "datetime": timestamp,
+                "elapsed": elapsed,
                 "left_pupil_x": left_pupil_x,
                 "left_pupil_y": left_pupil_y,
                 "right_pupil_x": right_pupil_x,
@@ -202,6 +228,8 @@ def process_video(
             else:
                 print("Could not find matching row for sample frame. No labeled image saved.")
 
+    return df_out
+
 def main():
     parser = argparse.ArgumentParser(
         description="Process a video for DLC in a single pass, capturing all frames and computing derived features."
@@ -213,6 +241,8 @@ def main():
     parser.add_argument("--resize_factor", type=float, default=1.0, help="Scale frames")
     parser.add_argument("--smooth_window", type=int, default=0, help="Rolling median smoothing window")
     parser.add_argument("--labeled_frame_output", default=None, help="Optional labeled frame output path")
+    # Remove the requirement for --video_start_datetime; it will be extracted if not provided.
+    parser.add_argument("--video_start_datetime", default=None, help="Optional video start date-time in 'YYYY-MM-DD HH:MM:SS' format")
     args = parser.parse_args()
 
     process_video(
@@ -222,7 +252,8 @@ def main():
         skip_frames=args.skip_frames,
         resize_factor=args.resize_factor,
         smooth_window=args.smooth_window,
-        labeled_frame_output=args.labeled_frame_output
+        labeled_frame_output=args.labeled_frame_output,
+        video_start_datetime=args.video_start_datetime
     )
 
 if __name__ == "__main__":

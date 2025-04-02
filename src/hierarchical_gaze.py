@@ -1,12 +1,10 @@
-#!/usr/bin/env python
-import argparse
 import os
+import argparse
 import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import time
 from torch.utils.data import Dataset, DataLoader, random_split
 
 #########################
@@ -14,23 +12,14 @@ from torch.utils.data import Dataset, DataLoader, random_split
 #########################
 
 def get_coarse_grid():
-    """
-    Returns the coarse grid for a 1024x768 screen.
-    Squares:
-      A: Top-left, B: Top-right, C: Bottom-left, D: Bottom-right.
-    """
     return {
-        "A": {"xmin": 0,         "xmax": 1024/2, "ymin": 0,         "ymax": 768/2},
-        "B": {"xmin": 1024/2,    "xmax": 1024,   "ymin": 0,         "ymax": 768/2},
-        "C": {"xmin": 0,         "xmax": 1024/2, "ymin": 768/2,    "ymax": 768},
-        "D": {"xmin": 1024/2,    "xmax": 1024,   "ymin": 768/2,    "ymax": 768},
+        "A": {"xmin": 0, "xmax": 1024/2, "ymin": 0, "ymax": 768/2},
+        "B": {"xmin": 1024/2, "xmax": 1024, "ymin": 0, "ymax": 768/2},
+        "C": {"xmin": 0, "xmax": 1024/2, "ymin": 768/2, "ymax": 768},
+        "D": {"xmin": 1024/2, "xmax": 1024, "ymin": 768/2, "ymax": 768},
     }
 
 def get_fine_grid(coarse_label, coarse_grid):
-    """
-    Returns a fine grid for a given coarse square.
-    For example, if coarse_label is "A", the square is subdivided into AA, AB, AC, AD.
-    """
     bounds = coarse_grid[coarse_label]
     xmin, xmax, ymin, ymax = bounds["xmin"], bounds["xmax"], bounds["ymin"], bounds["ymax"]
     xm = (xmin + xmax) / 2
@@ -69,7 +58,6 @@ class CoarseGazeDataset(Dataset):
                               'right_pupil_x','right_pupil_y']].values.astype(np.float32)
         self.screen = df[['screen_x','screen_y']].values.astype(np.float32)
         
-        # Normalize head and pupil data
         self.head_mean = self.head_data.mean(axis=0)
         self.head_std = self.head_data.std(axis=0)
         self.pupil_mean = self.pupil_data.mean(axis=0)
@@ -79,7 +67,7 @@ class CoarseGazeDataset(Dataset):
         self.pupil_normalized = (self.pupil_data - self.pupil_mean) / (self.pupil_std + 1e-7)
         
         self.grid = grid if grid is not None else get_coarse_grid()
-        self.grid_keys = sorted(self.grid.keys())  # e.g., ["A", "B", "C", "D"]
+        self.grid_keys = sorted(self.grid.keys())
     
     def __len__(self):
         return len(self.head_data)
@@ -130,7 +118,6 @@ class FineGazeDataset(Dataset):
                               'right_pupil_x','right_pupil_y']].values.astype(np.float32)
         self.screen = df[['screen_x','screen_y']].values.astype(np.float32)
         
-        # Filter only samples that fall in the specified coarse region
         if coarse_grid is None:
             coarse_grid = get_coarse_grid()
         bounds = coarse_grid[coarse_label]
@@ -145,7 +132,6 @@ class FineGazeDataset(Dataset):
         self.pupil_data = self.pupil_data[indices]
         self.screen = self.screen[indices]
         
-        # Use provided normalization parameters or compute from filtered data
         self.head_mean = head_mean if head_mean is not None else self.head_data.mean(axis=0)
         self.head_std = head_std if head_std is not None else self.head_data.std(axis=0)
         self.pupil_mean = pupil_mean if pupil_mean is not None else self.pupil_data.mean(axis=0)
@@ -191,77 +177,83 @@ class FineGazeDataset(Dataset):
 
 class CoarseHeadPoseNet(nn.Module):
     def __init__(self, embed_dim=128):
-        super().__init__()
-        self.fc = nn.Sequential(
-            nn.Linear(6, 256),
-            nn.ReLU(),
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Linear(128, embed_dim)
-        )
+        super(CoarseHeadPoseNet, self).__init__()
+        self.fc1 = nn.Linear(6, 64)
+        self.fc2 = nn.Linear(64, 128)
+        self.fc3 = nn.Linear(128, embed_dim)
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(0.2)
+    
     def forward(self, x):
-        return self.fc(x)
+        x = self.relu(self.fc1(x))
+        x = self.dropout(x)
+        x = self.relu(self.fc2(x))
+        x = self.dropout(x)
+        x = self.fc3(x)
+        return x
 
 class CoarseGazeNet(nn.Module):
     def __init__(self, embed_dim=128, num_coarse=4):
-        super().__init__()
-        self.head_net = CoarseHeadPoseNet(embed_dim=embed_dim)
-        self.common_fc = nn.Sequential(
-            nn.Linear(embed_dim + 4, 256),
-            nn.ReLU(),
-            nn.Linear(256, 128),
-            nn.ReLU()
-        )
-        self.classifier = nn.Linear(128, num_coarse)
-        self.regressor = nn.Linear(128, 2)
+        super(CoarseGazeNet, self).__init__()
+        self.head_net = CoarseHeadPoseNet(embed_dim)
+        self.pupil_fc = nn.Linear(4, 64)
+        self.combined_fc1 = nn.Linear(embed_dim + 64, 128)
+        self.combined_fc2 = nn.Linear(128, 64)
+        self.class_out = nn.Linear(64, num_coarse)
+        self.reg_out = nn.Linear(64, 2)
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(0.2)
+        self.sigmoid = nn.Sigmoid()
     
-    def forward(self, head_input, pupil_input):
-        h_embed = self.head_net(head_input)
-        combined = torch.cat([h_embed, pupil_input], dim=1)
-        features = self.common_fc(combined)
-        logits = self.classifier(features)
-        rel_out = self.regressor(features)
-        return logits, rel_out
+    def forward(self, head, pupil):
+        head_embed = self.head_net(head)
+        pupil_feat = self.relu(self.pupil_fc(pupil))
+        combined = torch.cat([head_embed, pupil_feat], dim=1)
+        x = self.relu(self.combined_fc1(combined))
+        x = self.dropout(x)
+        x = self.relu(self.combined_fc2(x))
+        x = self.dropout(x)
+        logits = self.class_out(x)
+        rel_coord = self.sigmoid(self.reg_out(x))
+        return logits, rel_coord
 
 class FineGazeNet(nn.Module):
     def __init__(self, embed_dim=128, num_fine=4):
-        super().__init__()
-        self.head_net = nn.Sequential(
-            nn.Linear(6, 256),
-            nn.ReLU(),
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Linear(128, embed_dim)
-        )
-        self.common_fc = nn.Sequential(
-            nn.Linear(embed_dim + 4, 256),
-            nn.ReLU(),
-            nn.Linear(256, 128),
-            nn.ReLU()
-        )
-        self.classifier = nn.Linear(128, num_fine)
-        self.regressor = nn.Linear(128, 2)
+        super(FineGazeNet, self).__init__()
+        self.head_net = CoarseHeadPoseNet(embed_dim)
+        self.pupil_fc = nn.Linear(4, 64)
+        self.combined_fc1 = nn.Linear(embed_dim + 64, 128)
+        self.combined_fc2 = nn.Linear(128, 64)
+        self.class_out = nn.Linear(64, num_fine)
+        self.reg_out = nn.Linear(64, 2)
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(0.2)
+        self.sigmoid = nn.Sigmoid()
     
-    def forward(self, head_input, pupil_input):
-        h_embed = self.head_net(head_input)
-        combined = torch.cat([h_embed, pupil_input], dim=1)
-        features = self.common_fc(combined)
-        logits = self.classifier(features)
-        rel_out = self.regressor(features)
-        return logits, rel_out
+    def forward(self, head, pupil):
+        head_embed = self.head_net(head)
+        pupil_feat = self.relu(self.pupil_fc(pupil))
+        combined = torch.cat([head_embed, pupil_feat], dim=1)
+        x = self.relu(self.combined_fc1(combined))
+        x = self.dropout(x)
+        x = self.relu(self.combined_fc2(x))
+        x = self.dropout(x)
+        logits = self.class_out(x)
+        rel_coord = self.sigmoid(self.reg_out(x))
+        return logits, rel_coord
 
 #########################
 # Training Routines
 #########################
 
-def train_coarse(csv_path, output_model_path, device='cpu', batch_size=32, epochs=50):
-    grid = get_coarse_grid()
-    dataset = CoarseGazeDataset(csv_path, grid=grid)
+def train_coarse(csv_path, output_model_path, device='cpu', batch_size=32, epochs=50, patience=10):
+    device = torch.device(device)
+    dataset = CoarseGazeDataset(csv_path)
     train_size = int(0.8 * len(dataset))
     test_size = len(dataset) - train_size
     train_ds, test_ds = random_split(dataset, [train_size, test_size])
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(test_ds, batch_size=batch_size)
     
     model = CoarseGazeNet(embed_dim=128, num_coarse=len(dataset.grid_keys)).to(device)
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
@@ -270,6 +262,7 @@ def train_coarse(csv_path, output_model_path, device='cpu', batch_size=32, epoch
     
     best_loss = float('inf')
     best_state = None
+    patience_counter = 0
     
     for epoch in range(1, epochs+1):
         model.train()
@@ -299,32 +292,42 @@ def train_coarse(csv_path, output_model_path, device='cpu', batch_size=32, epoch
                 total += head.size(0)
         test_loss = total_loss / len(test_ds)
         test_acc = correct / total
-        print(f"[Coarse] Epoch {epoch}: Train Loss: {train_loss:.4f} | Test Loss: {test_loss:.4f} | Test Acc: {test_acc*100:.2f}%")
+        print(f"Epoch {epoch}: Train Loss: {train_loss:.4f} | Test Loss: {test_loss:.4f} | Test Acc: {test_acc*100:.2f}%")
         
+        # Check if this is the best model so far
         if test_loss < best_loss:
             best_loss = test_loss
             best_state = model.state_dict()
+            patience_counter = 0  # Reset patience counter
+        else:
+            patience_counter += 1  # Increment patience counter
+            
+        # Early stopping check
+        if patience_counter >= patience:
+            print(f"Early stopping triggered after {epoch} epochs (no improvement for {patience} epochs)")
+            break
     
     save_dict = {
         'state_dict': best_state,
-        'grid': grid,
+        'grid': dataset.grid,
         'grid_keys': dataset.grid_keys,
         'head_mean': dataset.head_mean,
         'head_std': dataset.head_std,
         'pupil_mean': dataset.pupil_mean,
         'pupil_std': dataset.pupil_std,
     }
+    os.makedirs(os.path.dirname(output_model_path), exist_ok=True)
     torch.save(save_dict, output_model_path)
     print(f"Coarse model saved to {output_model_path}")
 
-def train_fine(csv_path, coarse_label, output_model_path, device='cpu', batch_size=32, epochs=50):
-    coarse_grid = get_coarse_grid()
-    dataset = FineGazeDataset(csv_path, coarse_label, coarse_grid=coarse_grid)
+def train_fine(csv_path, coarse_label, output_model_path, device='cpu', batch_size=32, epochs=50, patience=10):
+    device = torch.device(device)
+    dataset = FineGazeDataset(csv_path, coarse_label)
     train_size = int(0.8 * len(dataset))
     test_size = len(dataset) - train_size
     train_ds, test_ds = random_split(dataset, [train_size, test_size])
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(test_ds, batch_size=batch_size)
     
     model = FineGazeNet(embed_dim=128, num_fine=len(dataset.fine_keys)).to(device)
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
@@ -333,6 +336,7 @@ def train_fine(csv_path, coarse_label, output_model_path, device='cpu', batch_si
     
     best_loss = float('inf')
     best_state = None
+    patience_counter = 0
     
     for epoch in range(1, epochs+1):
         model.train()
@@ -364,9 +368,18 @@ def train_fine(csv_path, coarse_label, output_model_path, device='cpu', batch_si
         test_acc = correct / total
         print(f"[Fine {coarse_label}] Epoch {epoch}: Train Loss: {train_loss:.4f} | Test Loss: {test_loss:.4f} | Test Acc: {test_acc*100:.2f}%")
         
+        # Check if this is the best model so far
         if test_loss < best_loss:
             best_loss = test_loss
             best_state = model.state_dict()
+            patience_counter = 0  # Reset patience counter
+        else:
+            patience_counter += 1  # Increment patience counter
+            
+        # Early stopping check
+        if patience_counter >= patience:
+            print(f"Early stopping triggered after {epoch} epochs (no improvement for {patience} epochs)")
+            break
     
     save_dict = {
         'state_dict': best_state,
@@ -377,6 +390,7 @@ def train_fine(csv_path, coarse_label, output_model_path, device='cpu', batch_si
         'pupil_mean': dataset.pupil_mean,
         'pupil_std': dataset.pupil_std,
     }
+    os.makedirs(os.path.dirname(output_model_path), exist_ok=True)
     torch.save(save_dict, output_model_path)
     print(f"Fine model for coarse region {coarse_label} saved to {output_model_path}")
 
@@ -422,23 +436,33 @@ def preprocess_sample(sample, head_mean, head_std, pupil_mean, pupil_std):
     pupil_norm = (pupil - pupil_mean) / (pupil_std + 1e-7)
     return torch.tensor(head_norm).unsqueeze(0), torch.tensor(pupil_norm).unsqueeze(0)
 
-def infer(sample, coarse_model, coarse_grid, coarse_keys, head_mean, head_std, pupil_mean, pupil_std, fine_model_dir, device):
+def infer(sample, coarse_model, coarse_grid, coarse_keys, head_mean, head_std, pupil_mean, pupil_std, fine_model_dir, device, detailed=False):
     head, pupil = preprocess_sample(sample, head_mean, head_std, pupil_mean, pupil_std)
     with torch.no_grad():
         logits, coarse_rel = coarse_model(head.to(device), pupil.to(device))
-        coarse_pred_idx = torch.argmax(logits, dim=1).item()
+        if isinstance(logits, tuple):
+            logits = logits[0]
+        coarse_probs = torch.softmax(logits, dim=1).cpu().numpy().flatten()
+        coarse_pred_idx = np.argmax(coarse_probs)
         coarse_label = coarse_keys[coarse_pred_idx]
         bounds = coarse_grid[coarse_label]
         coarse_abs_x = bounds["xmin"] + coarse_rel[0,0].item() * (bounds["xmax"] - bounds["xmin"])
         coarse_abs_y = bounds["ymin"] + coarse_rel[0,1].item() * (bounds["ymax"] - bounds["ymin"])
         
-        # Try to load a fine model for the predicted coarse region.
+        if detailed:
+            print(f"Inference debug: coarse_probs: {coarse_probs}")
+            print(f"Coarse predicted label: {coarse_label} with bounds {bounds}")
+        
         fine_model_path = os.path.join(fine_model_dir, f"fine_model_{coarse_label}.pt")
         if os.path.exists(fine_model_path):
             fine_model, fine_grid, fine_keys, f_head_mean, f_head_std, f_pupil_mean, f_pupil_std = load_fine_model(fine_model_path, device)
             head_f, pupil_f = preprocess_sample(sample, f_head_mean, f_head_std, f_pupil_mean, f_pupil_std)
-            fine_logits, fine_rel = fine_model(head_f.to(device), pupil_f.to(device))
-            fine_pred_idx = torch.argmax(fine_logits, dim=1).item()
+            with torch.no_grad():
+                fine_logits, fine_rel = fine_model(head_f.to(device), pupil_f.to(device))
+                if isinstance(fine_logits, tuple):
+                    fine_logits = fine_logits[0]
+                fine_probs = torch.softmax(fine_logits, dim=1).cpu().numpy().flatten()
+                fine_pred_idx = np.argmax(fine_probs)
             fine_label = fine_keys[fine_pred_idx]
             fine_bounds = fine_grid[fine_label]
             fine_abs_x = fine_bounds["xmin"] + fine_rel[0,0].item() * (fine_bounds["xmax"] - fine_bounds["xmin"])
@@ -446,6 +470,9 @@ def infer(sample, coarse_model, coarse_grid, coarse_keys, head_mean, head_std, p
             final_x = fine_abs_x
             final_y = fine_abs_y
             method = "fine"
+            if detailed:
+                print(f"Fine predicted label: {fine_label} with bounds {fine_bounds}")
+                print(f"Fine probabilities: {fine_probs}")
         else:
             final_x = coarse_abs_x
             final_y = coarse_abs_y
@@ -473,15 +500,17 @@ def main():
     parser_coarse.add_argument("--batch_size", type=int, default=32, help="Batch size")
     parser_coarse.add_argument("--epochs", type=int, default=50, help="Number of epochs")
     parser_coarse.add_argument("--device", type=str, default="cpu", help="Device (cpu or cuda)")
+    parser_coarse.add_argument("--patience", type=int, default=10, help="Early stopping patience (epochs)")
 
-    # Fine training subcommand
-    parser_fine = subparsers.add_parser("fine_train", help="Train a fine model for a specific coarse square")
+    # Fine training subcommand: set coarse_label to "all" to train models for all regions.
+    parser_fine = subparsers.add_parser("fine_train", help="Train fine models for a specific coarse square or all (A, B, C, D)")
     parser_fine.add_argument("--data", required=True, help="Path to CSV file")
-    parser_fine.add_argument("--coarse_label", required=True, help="Coarse square label (A, B, C, or D)")
-    parser_fine.add_argument("--output", required=True, help="Path to save fine model (.pt)")
+    parser_fine.add_argument("--coarse_label", required=True, help="Coarse square label (A, B, C, D or 'all' for all regions)")
+    parser_fine.add_argument("--output", required=True, help="Path to save fine model (.pt) or directory when training all")
     parser_fine.add_argument("--batch_size", type=int, default=32, help="Batch size")
     parser_fine.add_argument("--epochs", type=int, default=50, help="Number of epochs")
     parser_fine.add_argument("--device", type=str, default="cpu", help="Device (cpu or cuda)")
+    parser_fine.add_argument("--patience", type=int, default=10, help="Early stopping patience (epochs)")
 
     # Inference subcommand
     parser_inf = subparsers.add_parser("inference", help="Run inference on a CSV of samples")
@@ -489,20 +518,29 @@ def main():
     parser_inf.add_argument("--coarse_model", required=True, help="Path to coarse model (.pt)")
     parser_inf.add_argument("--fine_model_dir", required=True, help="Directory with fine models named as fine_model_<coarse_label>.pt")
     parser_inf.add_argument("--device", type=str, default="cpu", help="Device (cpu or cuda)")
+    parser_inf.add_argument("--detailed", action="store_true", help="Enable detailed debug prints")
 
     args = parser.parse_args()
 
     if args.mode == "coarse_train":
-        train_coarse(args.data, args.output, device=args.device, batch_size=args.batch_size, epochs=args.epochs)
+        train_coarse(args.data, args.output, device=args.device, batch_size=args.batch_size, epochs=args.epochs, patience=args.patience)
     elif args.mode == "fine_train":
-        train_fine(args.data, args.coarse_label, args.output, device=args.device, batch_size=args.batch_size, epochs=args.epochs)
+        if args.coarse_label.lower() == "all":
+            if not os.path.isdir(args.output):
+                os.makedirs(args.output, exist_ok=True)
+            for label in sorted(get_coarse_grid().keys()):
+                output_path = os.path.join(args.output, f"fine_model_{label}.pt")
+                print(f"Training fine model for coarse region {label}...")
+                train_fine(args.data, label, output_path, device=args.device, batch_size=args.batch_size, epochs=args.epochs, patience=args.patience)
+        else:
+            train_fine(args.data, args.coarse_label, args.output, device=args.device, batch_size=args.batch_size, epochs=args.epochs, patience=args.patience)
     elif args.mode == "inference":
         device = args.device
         coarse_model, coarse_grid, coarse_keys, head_mean, head_std, pupil_mean, pupil_std = load_coarse_model(args.coarse_model, device)
         df = pd.read_csv(args.data_csv)
         for i, row in df.iterrows():
             sample = row.to_dict()
-            res = infer(sample, coarse_model, coarse_grid, coarse_keys, head_mean, head_std, pupil_mean, pupil_std, args.fine_model_dir, device)
+            res = infer(sample, coarse_model, coarse_grid, coarse_keys, head_mean, head_std, pupil_mean, pupil_std, args.fine_model_dir, device, detailed=args.detailed)
             print(f"Sample {i}: Coarse region {res['coarse_label']} predicted at {res['coarse_abs']}, final prediction {res['final_abs']} using {res['method']} method")
             if i >= 9:
                 break
