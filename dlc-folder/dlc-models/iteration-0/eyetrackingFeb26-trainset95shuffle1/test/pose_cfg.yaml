@@ -1,0 +1,20 @@
+all_joints:
+- - 0
+- - 1
+- - 2
+- - 3
+- - 4
+all_joints_names:
+- left_pupil
+- right_pupil
+- corner_left
+- corner_right
+- nose
+dataset: training-datasets/iteration-0/UnaugmentedDataSet_eyetrackingFeb26/eyetracking_ahrebel95shuffle1.mat
+global_scale: 0.8
+init_weights: /opt/miniconda3/envs/primatevision/lib/python3.8/site-packages/deeplabcut/pose_estimation_tensorflow/models/pretrained/mobilenet_v2_1.0_224.ckpt
+location_refinement: true
+locref_stdev: 7.2801
+net_type: mobilenet_v2_1.0
+num_joints: 5
+scoremap_dir: test

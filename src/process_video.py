@@ -109,6 +109,7 @@ def process_video(
                 break
 
             if skip_frames:
+                # optional skipping
                 _ = cap.read() 
                 global_frame_idx += 1
 
@@ -147,7 +148,7 @@ def process_video(
         dlc_result_csv = os.path.join(temp_dir, csv_files[0])
         dlc_df = pd.read_csv(dlc_result_csv, header=[1, 2])
 
-        # If video_start_datetime was not provided, extract it from the video filename.
+        # If video_start_datetime was not provided, extract from filename:
         if video_start_datetime is None:
             video_start = extract_video_start_from_filename(video_path)
             print(f"Extracted video start datetime from filename: {video_start}")
@@ -241,7 +242,6 @@ def main():
     parser.add_argument("--resize_factor", type=float, default=1.0, help="Scale frames")
     parser.add_argument("--smooth_window", type=int, default=0, help="Rolling median smoothing window")
     parser.add_argument("--labeled_frame_output", default=None, help="Optional labeled frame output path")
-    # Remove the requirement for --video_start_datetime; it will be extracted if not provided.
     parser.add_argument("--video_start_datetime", default=None, help="Optional video start date-time in 'YYYY-MM-DD HH:MM:SS' format")
     args = parser.parse_args()
 

@@ -1,0 +1,128 @@
+    # Project definitions (do not edit)
+Task: eyetracking
+scorer: ahrebel
+date: Feb26
+multianimalproject: false
+identity:
+
+    # Project path (change when moving around)
+project_path: dlc-folder
+
+    # Annotation data set configuration (and individual video cropping parameters)
+video_sets:
+  /Users/anthonyhrebello/rhesustracking/videos/input/1.mp4:
+    crop: 0, 640, 0, 480
+  /Users/anthonyhrebello/rhesustracking/videos/input/2.mp4:
+    crop: 0, 640, 0, 480
+  /Users/anthonyrebello/primatevision/videos/input/21.mp4:
+    crop: 0, 640, 0, 480
+  /Users/anthonyrebello/primatevision/dlc-folder/videos/24.mp4:
+    crop: 0, 640, 0, 480
+  /Users/anthonyrebello/primatevision/dlc-folder6/videos/1.mp4:
+    crop: 0, 640, 0, 480
+  /Users/anthonyrebello/primatevision/dlc-folder/videos/2.mp4:
+    crop: 0, 640, 0, 480
+  /Users/anthonyrebello/primatevision/videos/input/37.mp4:
+    crop: 0, 640, 0, 480
+  /Users/anthonyrebello/primatevision/videos/input/32.mp4:
+    crop: 0, 640, 0, 480
+  /Users/anthonyrebello/primatevision/videos/input/29.mp4:
+    crop: 0, 640, 0, 480
+  /Users/anthonyrebello/primatevision/videos/input/30.mp4:
+    crop: 0, 640, 0, 480
+bodyparts:
+- left_pupil
+- right_pupil
+- corner_left
+- corner_right
+- nose
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+start: 0
+stop: 1
+numframes2pick: 20
+
+    # Plotting configuration
+skeleton: []
+skeleton_color: black
+pcutoff: 0.6
+dotsize: 12
+alphavalue: 0.7
+colormap: rainbow
+
+    # Training,Evaluation and Analysis configuration
+TrainingFraction:
+- 0.95
+iteration: 0
+default_net_type: mobilenet_v2_1.0
+default_augmenter: default
+snapshotindex: -1
+batch_size: 8
+
+    # Cropping Parameters (for analysis and outlier frame detection)
+cropping: false
+    #if cropping is true for analysis, then set the values here:
+x1: 0
+x2: 640
+y1: 277
+y2: 624
+
+    # Refinement configuration (parameters from annotation dataset configuration also relevant in this stage)
+corner2move2:
+- 50
+- 50
+move2corner: true
