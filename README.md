@@ -1,23 +1,16 @@
-<pre>
-███╗   ███╗  █████╗  ██╗  ██╗  ██████╗ 
-████╗ ████║ ██╔══██╗ ██║ ██╔╝ ██╔═══██╗
-██╔████╔██║ ███████║ █████╔╝  ██║   ██║
-██║╚██╔╝██║ ██╔══██║ ██╔═██╗  ██║   ██║
-██║ ╚═╝ ██║ ██║  ██ ║██║  ██╗ ╚██████╔╝
-╚═╝     ╚═╝ ╚═╝  ╚═╝ ╚═╝  ╚═╝  ╚═════╝
-</pre>
+# MAKO
 
-**MaKo** is an advanced **eye-tracking system** designed for Rhesus macaques (and humans) that combines **DeepLabCut (DLC)** for multi-landmark detection with a **Two-Stage Neural Network** to map raw eye coordinates onto screen coordinates. It supports offline processing of pre-recorded videos, producing detailed **heatmaps** and CSV summaries of gaze/fixation data.
-
-
-**🙈 Fun Fact**
-Mako doesn’t require head-mounted trackers.
+**MAKO** (Macaque Attention and Keypoint Observation) is a vision-based gaze estimation framework for non-human primates, designed for behavioral and cognitive neuroscience research. It combines DeepLabCut-based facial landmark tracking with a two-stage neural network to predict gaze direction without requiring head-mounted hardware.
+<br/><br/>
+**🧠 No Headgear Required** <br/>
+MAKO operates on video alone—no invasive or wearable tracking hardware.
 
 ---
+    
 
 ## Overview
 
-Mako simplifies the **eye-tracking** workflow by:
+MAKO simplifies the **eye-tracking** workflow by:
 
 - **Detecting Eye and Nose Landmarks:**  
   Leverages DeepLabCut to detect multiple key landmarks (e.g., pupil corners, nose tip) that serve as inputs for gaze estimation.
@@ -265,7 +258,7 @@ python src/hierarchical_gaze_pro.py evaluate \
 ## Make GUI (Optional)
 
 - **PyQt5-based Interface:**  
-  A user-friendly GUI is available for interacting with all components of Mako.
+  A user-friendly GUI is available for interacting with all components of MAKO.
 ```bash
 pip install pyqt5
 python mako_app.py
@@ -305,13 +298,13 @@ Contributions are welcomed through GitHub issues and pull requests. Whether you�
 
 ## License
 
-Mako is licensed under the [GPL-3.0 License](https://www.gnu.org/licenses/gpl-3.0.en.html).
+MAKO is licensed under the [GPL-3.0 License](https://www.gnu.org/licenses/gpl-3.0.en.html).
 
 ---
 
 ## Security Disclaimer
 
-Use Mako within secure lab environments. No security guarantees are provided for public or commercial deployments.
+Use MAKO within secure lab environments. No security guarantees are provided for public or commercial deployments.
 
 ---
 
@@ -333,9 +326,9 @@ Below is the updated README with all of the previous content—including the cha
 
 ---
 
-# Mako
+# MAKO
 
-**Mako** is an advanced **eye-tracking system** designed for Rhesus macaques (and humans) that combines **DeepLabCut (DLC)** for multi-landmark detection with a **Two-Stage Neural Network** to map raw eye coordinates onto screen coordinates. It supports offline processing of pre-recorded videos, producing detailed **heatmaps** and CSV summaries of gaze/fixation data.
+**MAKO** is an advanced **eye-tracking system** designed for Rhesus macaques (and humans) that combines **DeepLabCut (DLC)** for multi-landmark detection with a **Two-Stage Neural Network** to map raw eye coordinates onto screen coordinates. It supports offline processing of pre-recorded videos, producing detailed **heatmaps** and CSV summaries of gaze/fixation data.
 
 ![Animated Eyes](https://github.com/user-attachments/assets/0f245b14-ec20-4a11-868a-ae207a7dfa1d)
 
@@ -343,7 +336,7 @@ Below is the updated README with all of the previous content—including the cha
 
 ## Overview
 
-Mako simplifies the **eye-tracking** workflow by:
+MAKO simplifies the **eye-tracking** workflow by:
 
 - **Detecting Eye and Nose Landmarks:**  
   Leverages DeepLabCut to detect multiple key landmarks (e.g., pupil corners, nose tip) that serve as inputs for gaze estimation.
@@ -398,8 +391,8 @@ Mako simplifies the **eye-tracking** workflow by:
 
 1. **Clone the Repository**  
    ```bash
-   git clone https://github.com/ahrebel/Mako.git
-   cd Mako
+   git clone https://github.com/ahrebel/MAKO.git
+   cd MAKO
    ```
 
 2. **Set Up Your Environment**  
@@ -714,13 +707,23 @@ Contributions are welcomed through GitHub issues and pull requests. Whether you�
 
 ## License
 
-Mako is licensed under the [GPL-3.0 License](https://www.gnu.org/licenses/gpl-3.0.en.html).
+MAKO is licensed under the [GPL-3.0 License](https://www.gnu.org/licenses/gpl-3.0.en.html).
 
 ---
 
 ## Security Disclaimer
 
-Use Mako within secure lab environments. No security guarantees are provided for public or commercial deployments.
+Use MAKO within secure lab environments. No security guarantees are provided for public or commercial deployments.
+
+---
+
+## Citation    (In Progress)
+
+If you use MA in your research, please cite the following:
+
+*Rebello, A. (2025). MAKO: Vision-based gaze tracking for non-human primates. [Manuscript in preparation]*
+
+BibTeX and DOI will be added upon publication.
 
 ---
 
@@ -731,5 +734,16 @@ Use Mako within secure lab environments. No security guarantees are provided for
 - **OpenCV:** [OpenCV Official Site](https://opencv.org/)
 
 ---
+<br/>
+This repository supports reproducible behavioral analysis and is designed for adaptation to future eye-tracking workflows.
+<br/>
+---
 
-**Happy Eye-Tracking!**
+<pre>
+███╗   ███╗  █████╗  ██╗  ██╗  ██████╗ 
+████╗ ████║ ██╔══██╗ ██║ ██╔╝ ██╔═══██╗
+██╔████╔██║ ███████║ █████╔╝  ██║   ██║
+██║╚██╔╝██║ ██╔══██║ ██╔═██╗  ██║   ██║
+██║ ╚═╝ ██║ ██║  ██ ║██║  ██╗ ╚██████╔╝
+╚═╝     ╚═╝ ╚═╝  ╚═╝ ╚═╝  ╚═╝  ╚═════╝
+</pre>
