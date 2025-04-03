@@ -47,20 +47,13 @@ def compute_distances_and_roll(
     return dist_nose_left_pupil, dist_nose_right_pupil, roll_angle_approx
 
 def extract_video_start_from_filename(video_filename):
-    """
-    Extracts the start datetime from a video filename.
-    Expected format: <number>_YYYYMMDD_HHMMSS_mmm.mp4
-    For example, from "50_20250401_231308_685.mp4" it extracts:
-      datetime(2025, 4, 1, 23, 13, 08, 685000)
-    """
     base = os.path.basename(video_filename)
     parts = base.split('_')
     if len(parts) < 4:
         raise ValueError("Video filename does not contain a valid start datetime.")
-    date_str = parts[1]             # e.g., "20250401"
-    time_str = parts[2]             # e.g., "231308"
-    ms_part = parts[3].split('.')[0] # e.g., "685"
-    # Pad milliseconds to 6 digits (for microseconds)
+    date_str = parts[1]
+    time_str = parts[2]
+    ms_part = parts[3].split('.')[0] 
     ms_str = ms_part.zfill(6)
     timestamp_str = f"{date_str}_{time_str}_{ms_str}"
     return datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S_%f")
@@ -92,7 +85,6 @@ def process_video(
     sample_frame_idx = None
     frame_map = []
 
-    # Timing for frame reading (for performance measurement)
     read_start_time = time.time()
 
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -109,7 +101,6 @@ def process_video(
                 break
 
             if skip_frames:
-                # optional skipping
                 _ = cap.read() 
                 global_frame_idx += 1
 
@@ -148,7 +139,6 @@ def process_video(
         dlc_result_csv = os.path.join(temp_dir, csv_files[0])
         dlc_df = pd.read_csv(dlc_result_csv, header=[1, 2])
 
-        # If video_start_datetime was not provided, extract from filename:
         if video_start_datetime is None:
             video_start = extract_video_start_from_filename(video_path)
             print(f"Extracted video start datetime from filename: {video_start}")
@@ -159,7 +149,7 @@ def process_video(
         final_data = []
         for i in range(len(dlc_df)):
             proc_idx, orig_idx, orig_time = frame_map[i]
-            elapsed = orig_idx / frame_rate  # elapsed seconds from video start
+            elapsed = orig_idx / frame_rate 
             timestamp = video_start + timedelta(seconds=elapsed)
 
             left_pupil_x  = dlc_df[("left_pupil",  "x")].iloc[i]
