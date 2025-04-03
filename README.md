@@ -4,6 +4,12 @@
 
 ![Animated Eyes](https://github.com/user-attachments/assets/0f245b14-ec20-4a11-868a-ae207a7dfa1d)
 
+ __  __       _        
+|  \\/  | __ _| | _____ 
+| |\\/| |/ _` | |/ / _ \\
+| |  | | (_| |   <  __/
+|_|  |_|\\__,_|_|\\_\\___|
+
 ---
 
 ## Overview
