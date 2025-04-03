@@ -1,10 +1,4 @@
-# Mako
-
-**Mako** is an advanced **eye-tracking system** designed for Rhesus macaques (and humans) that combines **DeepLabCut (DLC)** for multi-landmark detection with a **Two-Stage Neural Network** to map raw eye coordinates onto screen coordinates. It supports offline processing of pre-recorded videos, producing detailed **heatmaps** and CSV summaries of gaze/fixation data.
-
-![Animated Eyes](https://github.com/user-attachments/assets/0f245b14-ec20-4a11-868a-ae207a7dfa1d)
-
-<pre>
+# <pre>
 ███╗   ███╗  █████╗  ██╗  ██╗  ██████╗ 
 ████╗ ████║ ██╔══██╗ ██║ ██╔╝ ██╔═══██╗
 ██╔████╔██║ ███████║ █████╔╝  ██║   ██║
@@ -12,6 +6,11 @@
 ██║ ╚═╝ ██║ ██║  ██ ║██║  ██╗ ╚██████╔╝
 ╚═╝     ╚═╝ ╚═╝  ╚═╝ ╚═╝  ╚═╝  ╚═════╝
 </pre>
+
+**Mako** is an advanced **eye-tracking system** designed for Rhesus macaques (and humans) that combines **DeepLabCut (DLC)** for multi-landmark detection with a **Two-Stage Neural Network** to map raw eye coordinates onto screen coordinates. It supports offline processing of pre-recorded videos, producing detailed **heatmaps** and CSV summaries of gaze/fixation data.
+
+![Animated Eyes](https://github.com/user-attachments/assets/0f245b14-ec20-4a11-868a-ae207a7dfa1d)
+
 ---
 
 ## Overview
