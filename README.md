@@ -1,4 +1,4 @@
-# MAKO: MAcaque Attention and Keypoint Observation
+# MAKO: Macaque Attention and Keypoint Observation
 
 **MAKO** is an open-source, vision-based eye-tracking system for Rhesus macaques and humans. It leverages **DeepLabCut (DLC)** for multi-landmark detection and a **two-stage neural network** to estimate gaze location on a screen from facial keypoints. Designed for offline video analysis, MAKO produces interpretable heatmaps and structured CSV summaries of gaze behavior, offering a markerless alternative to head-mounted tracking systems.
 
