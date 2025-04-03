@@ -8,7 +8,7 @@
 
 ## Overview
 
-PrimateVision simplifies the **eye-tracking** workflow by:
+Mako simplifies the **eye-tracking** workflow by:
 
 - **Detecting Eye and Nose Landmarks:**  
   Leverages DeepLabCut to detect multiple key landmarks (e.g., pupil corners, nose tip) that serve as inputs for gaze estimation.
@@ -64,17 +64,17 @@ PrimateVision simplifies the **eye-tracking** workflow by:
 
 1. **Clone the Repository**  
    ```bash
-   git clone https://github.com/ahrebel/primatevision2.0.git
-   cd primatevision2.0
+   git clone https://github.com/ahrebel/mako.git
+   cd mako
    ```
 
 2. **Set Up Your Environment**  
    **Conda (recommended):**
    ```bash
-   conda create -n primatevision -c conda-forge python=3.8 \
+   conda create -n mako -c conda-forge python=3.8 \
        pytables hdf5 lzo opencv numpy pandas matplotlib \
        scipy tqdm statsmodels pytorch torchvision
-   conda activate primatevision
+   conda activate mako
    ```
    **pip + virtualenv (alternative):**
    ```bash
@@ -105,7 +105,7 @@ PrimateVision simplifies the **eye-tracking** workflow by:
    ```bash
    pip install pyqt5
    ```
-   This is required only if you want to use the PrimateVision GUI.
+   This is required only if you want to use the mako GUI.
 
 ---
 
@@ -253,13 +253,13 @@ python src/hierarchical_gaze_pro.py evaluate \
 
 ---
 
-## PrimateVision GUI (Optional)
+## Make GUI (Optional)
 
 - **PyQt5-based Interface:**  
-  A user-friendly GUI is available for interacting with all components of PrimateVision.
+  A user-friendly GUI is available for interacting with all components of Mako.
 ```bash
 pip install pyqt5
-python primatevision_app.py
+python mako_app.py
 ```
 
 ---
@@ -296,13 +296,13 @@ Contributions are welcomed through GitHub issues and pull requests. Whether youâ
 
 ## License
 
-PrimateVision is licensed under the [GPL-3.0 License](https://www.gnu.org/licenses/gpl-3.0.en.html).
+Mako is licensed under the [GPL-3.0 License](https://www.gnu.org/licenses/gpl-3.0.en.html).
 
 ---
 
 ## Security Disclaimer
 
-Use PrimateVision within secure lab environments. No security guarantees are provided for public or commercial deployments.
+Use Mako within secure lab environments. No security guarantees are provided for public or commercial deployments.
 
 ---
 
@@ -324,9 +324,9 @@ Below is the updated README with all of the previous contentâ€”including the cha
 
 ---
 
-# PrimateVision
+# Mako
 
-**PrimateVision** is an advanced **eye-tracking system** designed for Rhesus macaques (and humans) that combines **DeepLabCut (DLC)** for multi-landmark detection with a **Two-Stage Neural Network** to map raw eye coordinates onto screen coordinates. It supports offline processing of pre-recorded videos, producing detailed **heatmaps** and CSV summaries of gaze/fixation data.
+**Mako** is an advanced **eye-tracking system** designed for Rhesus macaques (and humans) that combines **DeepLabCut (DLC)** for multi-landmark detection with a **Two-Stage Neural Network** to map raw eye coordinates onto screen coordinates. It supports offline processing of pre-recorded videos, producing detailed **heatmaps** and CSV summaries of gaze/fixation data.
 
 ![Animated Eyes](https://github.com/user-attachments/assets/0f245b14-ec20-4a11-868a-ae207a7dfa1d)
 
@@ -334,7 +334,7 @@ Below is the updated README with all of the previous contentâ€”including the cha
 
 ## Overview
 
-PrimateVision simplifies the **eye-tracking** workflow by:
+Mako simplifies the **eye-tracking** workflow by:
 
 - **Detecting Eye and Nose Landmarks:**  
   Leverages DeepLabCut to detect multiple key landmarks (e.g., pupil corners, nose tip) that serve as inputs for gaze estimation.
@@ -389,17 +389,17 @@ PrimateVision simplifies the **eye-tracking** workflow by:
 
 1. **Clone the Repository**  
    ```bash
-   git clone https://github.com/ahrebel/primatevision2.0.git
-   cd primatevision2.0
+   git clone https://github.com/ahrebel/Mako.git
+   cd Mako
    ```
 
 2. **Set Up Your Environment**  
    **Conda (recommended):**
    ```bash
-   conda create -n primatevision -c conda-forge python=3.8 \
+   conda create -n mako -c conda-forge python=3.8 \
        pytables hdf5 lzo opencv numpy pandas matplotlib \
        scipy tqdm statsmodels pytorch torchvision
-   conda activate primatevision
+   conda activate mako
    ```
    **pip + virtualenv (alternative):**
    ```bash
@@ -705,13 +705,13 @@ Contributions are welcomed through GitHub issues and pull requests. Whether youâ
 
 ## License
 
-PrimateVision is licensed under the [GPL-3.0 License](https://www.gnu.org/licenses/gpl-3.0.en.html).
+Mako is licensed under the [GPL-3.0 License](https://www.gnu.org/licenses/gpl-3.0.en.html).
 
 ---
 
 ## Security Disclaimer
 
-Use PrimateVision within secure lab environments. No security guarantees are provided for public or commercial deployments.
+Use Mako within secure lab environments. No security guarantees are provided for public or commercial deployments.
 
 ---
 
