@@ -216,14 +216,39 @@ Runs performance evaluation, returning metrics like confusion matrix accuracy. S
 
 ## Performance Benchmarks *(in progress)*
 
-| Metric               | Value       |
-|----------------------|-------------|
-| Mean Gaze Error      | *TBD px*    |
-| Accuracy (Coarse)    | *TBD %*     |
-| Accuracy (Fine)      | *TBD %*     |
-| CPU Inference Time   | *TBD ms*    |
+For 60 Minutes (1 Hour) of Training Videos at 30fps:
+| Metric               | Value              |
+|----------------------|--------------------|
+| Mean Gaze Error      | *477.54 px*        |
+| Accuracy (Coarse)    | *25%*              |
+| Accuracy (Fine)      | *0%* (not used)    |
+| CPU Inference Time   | *0.34 ms/frame*    |
 
-> Benchmarks will be updated based on internal evaluations. You can contribute your own test results via pull request.
+For 120 Minutes (2 Hours) of Training Videos at 30fps:      (COMING SOON!)
+| Metric               | Value              |
+|----------------------|--------------------|
+| Mean Gaze Error      | *TBD px*           |
+| Accuracy (Coarse)    | *TBD %*            |
+| Accuracy (Fine)      | *TBD %*            |
+| CPU Inference Time   | *TBD ms/frame*     |
+
+For 240 Minutes (4 Hours) of Training Videos at 30fps:      (COMING SOON!)
+| Metric               | Value              |
+|----------------------|--------------------|
+| Mean Gaze Error      | *TBD px*           |
+| Accuracy (Coarse)    | *TBD %*            |
+| Accuracy (Fine)      | *TBD %*            |
+| CPU Inference Time   | *TBD ms/frame*     |
+
+For 360 Minutes (6 Hours) of Training Videos at 30fps:      (COMING SOON!)
+| Metric               | Value              |
+|----------------------|--------------------|
+| Mean Gaze Error      | *TBD px*           |
+| Accuracy (Coarse)    | *TBD %*            |
+| Accuracy (Fine)      | *TBD %*            |
+| CPU Inference Time   | *TBD ms/frame*     |
+
+> Benchmarks will be updated based on internal evaluations. You can contribute your own test results via pull request. Please note that your results may vary based on training data quality, FPS, and other factors. 
 
 ---
 
