@@ -1,6 +1,6 @@
 # MAKO: Macaque Attention and Keypoint Observation
 
-**MAKO** is an open-source, vision-based eye-tracking system for Rhesus macaques and humans. It leverages **DeepLabCut (DLC)** for multi-landmark detection and a **two-stage neural network** to estimate gaze location on a screen from facial keypoints. Designed for offline video analysis, MAKO produces interpretable heatmaps and structured CSV summaries of gaze behavior, offering a markerless alternative to head-mounted tracking systems.
+**MAKO** is an open-source, webcam-based eye-tracking system for Rhesus macaques and humans. It uses **DeepLabCut (DLC)** for multi-landmark detection and a **two-stage neural network** to estimate gaze location on a screen from facial keypoints. MAKO is designed for offline video analysis and produces interpretable heatmaps and structured CSV summaries of gaze behavior, offering an alternative to head-mounted tracking systems.
 
 ---
 
@@ -43,7 +43,6 @@ MAKO streamlines the gaze estimation workflow with:
   Exportable heatmaps, quadrant maps, and screenshot overlays for data exploration.
 
 - **No Head-Mounted Hardware Required**  
-  Fully markerless and non-invasive for use with free-viewing animals.
 
 ---
 
@@ -256,15 +255,14 @@ For 360 Minutes (6 Hours) of Training Videos at 30fps:      (COMING SOON!)
 
 MAKO is intended for **controlled research environments**. It does not include sandboxing, authentication, or user access control features. Avoid using MAKO in unsecured networks or public-facing systems.
 
-- No external telemetry or analytics are used.
 - Input videos and results are processed/stored locally.
-- Users are responsible for complying with ethical and data handling policies at their institutions.
+- Users are responsible for complying with their institutions' ethical and data handling policies.
 
 ---
 
 ## Contributing
 
-Contributions are welcome via issues and pull requests. Feedback from behavioral neuroscience, computer vision, and animal research communities is especially valued. See the [CONTRIBUTING.md](CONTRIBUTING.md) guide for suggestions.
+Contributions are welcome via issues and pull requests. See the [CONTRIBUTING.md](CONTRIBUTING.md) guide for suggestions.
 
 ---
 
