@@ -15,5 +15,5 @@ statsmodels==0.14.1
 h5py==3.11.0
 PyQt5==5.15.11
 sleap==2.0.8
-torch==2.4.0
+torch==2.7.0
 torchvision==0.15.2
